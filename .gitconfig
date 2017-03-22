@@ -15,6 +15,11 @@
     autocrlf = input
 	editor = vi
     pager = less -SE
+
+    # Treat spaces before tabs and all kinds of trailing whitespace as an error
+    # [default] trailing-space: looks for spaces at the end of a line
+    # [default] space-before-tab: looks for spaces before tabs at the beginning of a line
+    whitespace = space-before-tab,-indent-with-non-tab,trailing-space
 [alias]
     cm = commit -m 
     co = checkout
@@ -22,3 +27,16 @@
 	br = branch
     st = status -sb
     lg = log --graph --pretty=format:'%C(bold red)%h%C(reset) ---%C(yellow)%d%C(reset) %s %C(bold green)(%cr)%C(reset) %C(bold blue)by%C(reset) %cn, %cE'
+    
+    # Amend the currently staged files to the latest commit
+    amend = commit --amend --reuse-message=HEAD
+
+    # Remove branches that have already been merged with master
+    # a.k.a. ‘delete merged’
+    dm = "!git branch --merged | grep -v '\\*' | xargs -n 1 git branch -d"
+
+    # List contributors with number of commits
+    contributors = shortlog --summary --numbered
+[apply]
+    # Detect whitespace errors when applying a patch
+    whitespace = fix
