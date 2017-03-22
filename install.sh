@@ -1,8 +1,8 @@
-######### Variables
+######## Variables
 
 dir=~/dotfiles                    # dotfiles directory
 olddir=~/dotfiles_old             # old dotfiles backup directory
-files=".bashrc .vimrc .vim"        # list of files/folders to symlink in homedir
+files=".gitconfig .bashrc .vimrc .vim"        # list of files/folders to symlink in homedir
 
 ##########
 
@@ -24,5 +24,3 @@ for file in $files; do
     ln -s $dir/$file ~/$file
 done
 
-source ~/.bashrc
-source ~/.vimrc
