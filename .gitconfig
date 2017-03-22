@@ -1,0 +1,29 @@
+[user]
+	email =
+	name =
+[github]
+	user =
+[color]
+    branch = auto
+    diff = auto
+    interactive = auto
+    pager = true
+    status = auto
+    ui = true
+[color "status"]
+    added = green
+    changed = yellow
+    untracked = red
+[push]
+    default = current
+[core]
+    autocrlf = input
+	editor = vi
+    pager = less -SE
+[alias]
+    ci = commit
+    co = checkout
+	ba = branch -a
+	br = branch
+    st = status -sb
+    lg = log --graph --pretty=format:'%C(bold red)%h%C(reset) ---%C(yellow)%d%C(reset) %s %C(bold green)(%cr)%C(reset) %C(bold blue)by%C(reset) %cn, %cE'
