@@ -74,5 +74,5 @@ function parse_git_branch() {
 # (http://en.wikipedia.org/wiki/Unicode_symbols)
 symbol=' $ '
 
-export PS1="\[${MAGENTA}\]\u \[$RESET\]in \[$GREEN\]\w\[$RESET\]\$([[ -n \$(git branch 2> /dev/null) ]] && echo \" on \")\[$PURPLE\]\$(parse_git_branch)\[$RESET\]"'$symbol\[$RESET\]'
+export PS1="\[${MAGENTA}\]\u \[$RESET\]>\[$GREEN\]\w\[$RESET\]\$([[ -n \$(git branch 2> /dev/null) ]] && echo \">\")\[$PURPLE\]\$(parse_git_branch)\[$RESET\]"'$symbol\[$RESET\]'
 export PS2="\[$ORANGE\]→ \[$RESET\]"
