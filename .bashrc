@@ -62,6 +62,9 @@ export PURPLE
 export BOLD
 export RESET
 
+# Aliases
+alias ls="ls --color=auto"
+
 # Git branch details
 function parse_git_dirty() {
 	[[ $(git status 2> /dev/null | tail -n1) != *"working "*" clean"* ]] && echo "±"
