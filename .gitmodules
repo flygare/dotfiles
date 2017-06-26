@@ -1,0 +1,3 @@
+[submodule "bin/timelog"]
+	path = bin/timelog
+	url = https://github.com/lilja/timelog
