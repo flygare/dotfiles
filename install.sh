@@ -42,6 +42,7 @@ done
 # Install OS specific
 if [[ "$OSTYPE" == "linux-gnu" ]]; then
     # Linux install
+    apt-get install curl
     apt-get install zsh
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     # Mac OSX install
