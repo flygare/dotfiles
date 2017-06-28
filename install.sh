@@ -46,6 +46,7 @@ if [[ "$OSTYPE" == "linux-gnu" ]]; then
     apt-get install zsh
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     # Mac OSX install
+    brew install autojump
     brew install zsh
     /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 
