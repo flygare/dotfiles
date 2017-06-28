@@ -1,8 +1,10 @@
+#!/bin/sh
+
 ######## Variables
 
 dir=~/dotfiles                    # dotfiles directory
 olddir=~/dotfiles_old             # old dotfiles backup directory
-files=".gitconfig.local .gitconfig .inputrc .tmux.conf .bashrc .vimrc .vim"        # list of files/folders to symlink in homedir
+files=".gitconfig.local .gitconfig .inputrc .tmux.conf .bashrc .vimrc .vim .zshrc"        # list of files/folders to symlink in homedir
 gitname=""
 gitemail=""
 
@@ -36,3 +38,17 @@ for file in $files; do
     echo "Creating symlink to $file in home directory."
     ln -s $dir/$file ~/$file
 done
+
+# Install OS specific
+if [[ "$OSTYPE" == "linux-gnu" ]]; then
+    # Linux install
+    apt-get install zsh
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    # Mac OSX install
+    brew install zsh
+    /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+
+fi
+
+# Install general
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)"
