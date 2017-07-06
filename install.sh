@@ -4,7 +4,7 @@
 
 dir=~/dotfiles                    # dotfiles directory
 olddir=~/dotfiles_old             # old dotfiles backup directory
-files=".gitconfig.local .gitconfig .inputrc .tmux.conf .bashrc .vimrc .vim .zshrc"        # list of files/folders to symlink in homedir
+files=".gitconfig.local .gitconfig .profile .inputrc .tmux.conf .bashrc .vimrc .vim .zshrc"        # list of files/folders to symlink in homedir
 gitname=""
 gitemail=""
 

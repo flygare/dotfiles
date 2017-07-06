@@ -35,7 +35,7 @@
     lg = log --graph --pretty=format:'%C(bold red)%h%C(reset) ---%C(yellow)%d%C(reset) %s %C(bold green)(%cr)%C(reset) %C(bold blue)by%C(reset) %cn, %cE'
     
     # Amend the currently staged files to the latest commit
-    amend = commit --amend --reuse-message=HEAD
+    amend = commit --amend --reuse-message=HEAD --date=now
 
     # Remove branches that have already been merged with master
     # a.k.a. ‘delete merged’
