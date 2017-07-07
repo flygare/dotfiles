@@ -1,4 +1,4 @@
-[submodule "bin/timelog"]
-	path = bin/timelog
-	url = https://github.com/lilja/timelog
+[submodule "timelog"]
+	path = timelog
+	url = https://github.com/Lilja/timelog.git
 	branch = master
