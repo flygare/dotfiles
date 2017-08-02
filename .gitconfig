@@ -28,7 +28,7 @@
 
 [alias]
     poh = push origin HEAD
-    pof = push origin HEAD -f
+    pof = push origin HEAD --force-with-lease
     cm = commit -m 
     co = checkout
 	ba = branch -a
