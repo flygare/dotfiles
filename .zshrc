@@ -7,7 +7,7 @@
 # Set name of the theme to load. Optionally, if you set this to "random"
 # it'll load a random theme each time that oh-my-zsh is loaded.
 # See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
-ZSH_THEME="wezm"
+ZSH_THEME="gitster"
 
 # Uncomment the following line to use case-sensitive completion.
 # CASE_SENSITIVE="true"
@@ -56,6 +56,9 @@ plugins=(autojump git docker)
 source $ZSH/oh-my-zsh.sh
 
 # User configuration
+
+# Autocorrect spelling
+setopt correct
 
 # export MANPATH="/usr/local/man:$MANPATH"
 
