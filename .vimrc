@@ -7,8 +7,12 @@ set number
 " Configure spaces instead of tabs
 set expandtab
 set smarttab
-set shiftwidth=4
-set tabstop=4
+set shiftwidth=2
+set tabstop=2
+set softtabstop=2
+
+" Tabs for gitconfig
+autocmd Filetype gitconfig setlocal ts=4 sw=4 sts=0 noexpandtab
 
 " Wordwrap
 set ai
