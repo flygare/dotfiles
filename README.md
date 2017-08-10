@@ -4,7 +4,7 @@
 
 Clone and install oneliner
 ```
-pushd ~ && git clone https://github.com/flygare/dotfiles.git && ./install.sh && popd
+bash -c "$(wget -qO - https://raw.github.com/flygare/dotfiles/master/install.sh)"
 ```
 
 Install dotfiles on cloned repository
