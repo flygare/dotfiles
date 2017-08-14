@@ -1,0 +1,14 @@
+language: bash
+
+matrix:
+  include:
+    - os: linux
+    - os: osx
+
+notifications:
+  email:
+    on_failure: never
+    on_success: never
+
+script: bash test.sh
+sudo: required
