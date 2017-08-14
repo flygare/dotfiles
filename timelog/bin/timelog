@@ -1,0 +1,1030 @@
+#!/bin/bash
+
+# Author Erik Lilja, github@lilja
+log_path="$HOME/.config/timelogs"
+
+# Increased log level = more debugy
+log_level=0
+
+# Version
+VERSION="0.4.1"
+
+# A phrase to type out to purge the logs/configuration..
+PURGE_PHRASE="timelog"
+
+function logger_debug {
+  [ $log_level -ge 1 ] && echo "$(date +%Y-%m-%d\ %H:%M:%S) DEBUG $1"
+}
+
+function usage {
+  echo "Timelog is a script written for keeping track of time for projects."
+  echo "It will log time inputed via this CLI to store it to the disk in \$HOME/.config/timelog/project_id.log."
+  echo ""
+  echo "Usage: $(basename $0)"
+  echo " * log (project_id) (start time, end time, break time) [--note] [--date timestamp]"
+  echo " * list project"
+  echo " * show logs (project_id) (week) [--raw]"
+  echo " * delete project"
+  echo " * start (project_id)"
+  echo " * --help"
+  echo " * --version"
+  echo " * --purge"
+  echo ""
+  echo "For debugging, run with -v"
+  echo "To see examples, run $(basename $0) --examples"
+  echo "All arguments in parenthesis will be prompted to the user if not supplied"
+  echo "All arguments in brackets are optional."
+  [ $1 -eq 1 ] && exit 1 || exit 0
+}
+
+function examples {
+  bin=$(basename $0)
+  echo "$bin create project"
+  echo "... follow the prompt text"
+  echo "$bin log project test 08:30 14:00 30"
+  echo "Save this? y/n y"
+  echo "$bin list projects"
+  echo "1. Test[ts]"
+  exit 0
+}
+
+function list_projects {
+  files=$(ls "$log_path/def/" 2>/dev/null)
+  it=1
+  while read -r file_name; do
+    if [ -f "$log_path/def/$file_name" ]; then
+      file=$(cat "$log_path/def/$file_name")
+      name=$(echo "$file" | grep -o 'project_name\ *\=\ *.*' | cut -d '=' -f 2- | awk '{$1=$1};1')
+      id=$(echo "$file" | grep -o 'project_id\ *\=\ *.*' | cut -d '=' -f 2- | awk '{$1=$1};1')
+      printf "${it}: $name [$id]\n"
+      it=$((it+1))
+    fi
+  done <<< "$files"
+}
+
+function get_project_meta_info {
+  file=$(cat "$log_path/def/$1")
+  target_hours=$(echo "$file" | grep -o 'target_hours\ *\=\ *.*' | cut -d '=' -f 2- | awk '{$1=$1};1')
+  money=$(echo "$file" | grep -o 'money_per_hour\ *\=\ *.*' | cut -d '=' -f 2- | awk '{$1=$1};1')
+  currency=$(echo "$file" | grep -o 'currency\ *\=\ *.*' | cut -d '=' -f 2- | awk '{$1=$1};1')
+  logger_debug "Target_hours: $target_hours"
+  logger_debug "Money: $money"
+  logger_debug "Currency: $currency"
+}
+
+function week_stats {
+  # $1 = content of a project file(string)
+  # $2 = the week to look at
+  # $3 = the year to look at
+  # RELIES ON THAT global variable $target_hours has been set!
+  file_contents=$1
+  week=$2
+  year=$3
+  logger_debug "project name: '$proj_name'"
+  logger_debug "Week: '$week'"
+  logger_debug "Year: '$year'"
+  records=$(echo "$file_contents" | grep "$year-$week-[1-7]*\/")
+  day=$(echo "$records" | grep -o "\/$year-[0-9]\+-[0-9]\+" | sed 's#^\/##')
+  if [ -z $target_hours ]; then { echo "Target hours not specified." ; exit 1 ; } fi
+
+  dec_time=0
+  dec_time_for_day=0
+  # Calculate how much time has been spent on a week
+  if [ ! -z "$records" ]; then
+    echo "Days worked for week $week"
+    while read -r record; do
+      day=$(echo "$record" | grep -o "\/$year-[0-9]\+-[0-9]\+" | sed 's#^\/##')
+      dec_time_for_day=$(echo "$record" | grep -o '\[[0-9]\+\.*[0-9]*\]' | grep -o '[0-9]*\.*[0-9]*')
+      mil_time_for_day=$(echo "$record" | grep -o '\{[0-9]*:[0-9]*\}' | grep -o '[0-9]*:[0-9]*')
+      day=$(date -d "$day" +%A | sed  's/^\(.\)/\U\1/') # Sed regex converts first char to uppercase. monday=>Monday
+      dec_time=$(awk "BEGIN {print ($dec_time+$dec_time_for_day)}") # Awk this because it can contain decimals.
+
+      # grep: match \[ then everything that is not \] and a final \] at the very end of the string.
+      note=$(echo "$record" | grep -o '\[[^]]*\]$' | sed 's#^\[##; s#\]$##')
+      echo "$day: ${dec_time_for_day}h / $mil_time_for_day $note"
+    done <<< "$records"
+
+    weekly_info=$(weekly_stats_days "$file_contents" "$week" "$year")
+    amount_of_days_worked=$(echo $weekly_info | wc -w)
+    echo "------"
+    echo "You have worked for $dec_time hours at the following days: $weekly_info"
+    remaining=$(awk "BEGIN {print ($target_hours-$dec_time)}")
+    days_in_a_work_week=5
+
+    # Check if there is an remaining number of hours compoared to the total_hours. If so, give an estimate.
+    if [ $(echo "$remaining" | awk '($1 < 0){ exit 1 }' ; echo $?) ]; then
+      days=$(($days_in_a_work_week-$amount_of_days_worked))
+      logger_debug "Worked for $amount_of_days_worked days. Amount of remaining days(Assuming $days_in_a_work_week-day work week):$days"
+
+      # If about to do an estimate calculation, make sure that the worked days does not exceed days in a work week.
+      # Because it might cause an division by zero error
+      if [ $amount_of_days_worked -ge $days_in_a_work_week ]; then
+        days_in_a_work_week=7
+        days=$(($days_in_a_work_week-$amount_of_days_worked))
+        logger_debug "The days in a work week is exceeded by the number of days that has been worked."
+        logger_debug "Setting the days in a work week to $days_in_a_work_week"
+      fi
+
+      estimate=$(awk "BEGIN {print ($remaining/$days)}")
+      if [ $(echo "$estimate" | awk '($1 < 0){ exit 1 } ' ; echo $?) ]; then
+        echo "You have $remaining hours more to work, out of the total hours of $target_hours"
+        echo "This yields an estimate of $estimate hours for $days more days."
+      fi
+    else
+      echo "All hours caught up!"
+      overtime=$(awk "BEGIN { print($dec_time-$target_hours) }")
+      echo "You have overtime of $overtime hours"
+    fi
+    if [ ! -z "$money" ]; then
+      echo "You have earned $(awk "BEGIN {print ($dec_time*$money)}") $currency pre-tax!"
+    fi
+
+  else
+    echo "Nothing worked on week $week year $year for project $proj_name"
+  fi
+}
+
+function save_time_to_disk() {
+  # format timestamp-of-day;time;project_id
+  # $1 = kind of operation, if break or start
+  # $2 = time in 'hhmm' format, like 1220 for 12:20
+  # $3 = YYYY-mm-dd
+  operation="$1"
+  timestamp="$2"
+
+  if [ -z "${operation:+foo}" ]; then
+    echo "Error, no operation supplied"
+    exit 1
+  fi
+  if [ -z "${timestamp:+foo}" ]; then
+    echo "Error, no timestamp supplied"
+    exit 1
+  fi
+  if [ -z "${proj_name:+foo}" ]; then
+    echo "Error, no project supplied"
+    exit 1
+  fi
+
+  if [ -f "$log_path/saved_log_times" ]; then
+    phrase="${proj_name};${operation};${timestamp}"
+    logger_debug "Saving '$phrase' to '$log_path/saved_log_times'"
+    echo "$phrase" >> "$log_path/saved_log_times"
+    exit 0
+  else
+    echo "No such file: saved_log_times"
+    exit 1
+  fi
+}
+
+function read_start_time_for_disk() {
+  # format timestamp-of-day;time;project_id
+  # $1 = kind of operation, if break or start
+  # $2 = time in 'hhmm' format, like 1220 for 12:20
+  # $3 = YYYY-mm-dd
+  operation="$1"
+
+  if [ -z "${proj_name:+foo}" ]; then
+    exit 1
+  fi
+  if [ -z "${operation:+foo}" ]; then
+    exit 1
+  fi
+
+  if [ -f "$log_path/saved_log_times" ]; then
+    timestamp=$(grep "^$proj_name;$operation" "$log_path/saved_log_times" | tail -n1 | tr ';' '\n' | tail -n1)
+    if [ ! -z "$timestamp" ]; then
+      date +%H%M -d "$timestamp"
+    else
+      exit 1
+    fi
+  else
+    exit 1
+  fi
+}
+
+function weekly_stats_days {
+  # $1 = Contents of the log file
+  # $2 = what week to search for
+  # $3 = What year to search for
+  k=(Monday Tuesday Wednesday Thursday Friday Saturday Sunday)
+  file_contents=$1
+  week=$2
+  year=$3
+  days=$(echo "$file_contents" | grep -o "$year-$week-[1-7]*\/" | grep -o '\-[1-7]\/' | grep -o '[1-7]' | sort)
+  day_str=""
+  for day in $days; do
+    day_str="$day_str, ${k[((day-1))]}"
+  done
+  day_str=$(echo "$day_str" | sed 's/^,\ //')
+  echo "$day_str"
+}
+
+function get_all_projects {
+  all_projects=$(list_projects)
+}
+
+function parse_timestamp {
+  hour="" ; minute=""
+
+  if [[ ${#1} -eq 1 ]]; then
+    # 0-9
+    hour=$(echo $1 | grep -o '[0-9]\{1\}'); hour="0$hour"; minute="00"
+  elif [[ ${#1} -eq 2 ]]; then
+    # 10-23
+    hour=$(echo $1 | grep -o '\(\(1[0-9]\)\|2\([0-3]\)\)'); minute="00"
+  elif [[ ${#1} -eq 5 ]]; then
+    # 08:00 or 08.00
+    if [[ $1 = *":"* ]]; then
+      hour=$(echo $1 | grep -o '^[0-9]\{2\}');
+      minute=$(echo $1 | grep -o '\:*\{1\}[0-9]\{2\}$' | sed 's#\:*##')
+    elif [[ $1 = *"."* ]]; then
+      hour=$(echo $1 | grep -o '^[0-9]\{2\}');
+      minute=$(echo $1 | grep -o '\.*\{1\}[0-9]\{2\}$' | sed 's#\.*##')
+    fi
+  elif [[ ${#1} -eq 4 ]]; then
+    # 0800, 8:00 or 8.00
+    if [[ $1 = *":"* ]]; then
+      hour=$(echo $1 | grep -o '^[0-9]\{1\}'); hour="0$hour";
+      minute=$(echo $1 | grep -o '\:*[0-9]\{2\}$' | sed 's#\:*##')
+    elif [[ $1 = *"."* ]]; then
+      hour=$(echo $1 | grep -o '^[0-9]\{1\}'); hour="0$hour";
+      minute=$(echo $1 | grep -o '\.*[0-9]\{2\}$' | sed 's#\.*##')
+    else
+      hour=$(echo $1 | grep -o '^[0-9]\{2\}'); minute=$(echo $1 | grep -o '[0-9]\{2\}$')
+    fi
+  elif [[ ${#1} -eq 3 ]]; then
+    # 800
+    hour=$(echo $1 | grep -o '^[1-9]\{1\}'); hour="0$hour";
+    minute=$(echo $1 | grep -o '[0-9]\{2\}$')
+  else
+    # ?????
+    hour=""; mintue=""
+  fi
+  echo "$hour $minute"
+}
+
+function test_timestamp {
+  k=$(echo "$1" | grep -o '[0-9][0-9]\ [0-9][0-9]')
+  logger_debug "test_timestamp: '$1' => '$k'"
+  [ ! -z "$k" ] && [ "$k" == "$1" ] && exit 0 || exit 1
+}
+
+function test_is_number {
+  k=$(echo "$1" | grep -o '[0-9]*')
+  logger_debug "test_is_number: '$1' => '$k'"
+  if [ ! -z "$k" ] && [ "$k" == "$1" ]; then exit 0 ; else exit 1; fi
+}
+
+function does_project_exist {
+  if [ -f "$log_path/def/$1" ]; then exit 0; else exit 1; fi
+}
+
+function delete_project {
+  if [ ! -z "$all_projects" ]; then
+    echo "The projects"
+    echo -e "$all_projects"
+
+    echo "Which project do you want deleted?"
+    read proj
+
+    echo "Are you sure you want to delete it? (y/n)"
+    read ans
+    if [ "$ans" = "y" ]; then
+      logger_debug "Sending $proj as param info to project info"
+      proj=$(get_project_from_all_projects $proj)
+      logger_debug "Matched '$proj'"
+      [ -f "$log_path/def/$proj" ] && {
+        rm "$log_path/$proj.logs" ;
+        rm "$log_path/def/$proj" ;
+        logger_debug "Deleting logs '$proj_name.logs'" ;
+        logger_debug "Deleting definition 'def/$proj_name'" ;
+        all_projects=$(list_projects) ;
+      } || {
+        echo "No such project file: '$log_path/def/$proj'" ;
+      }
+    fi
+  else
+    echo "No projects, can't delete nothing that doesn't exist!"
+  fi
+}
+
+function get_project_from_all_projects {
+  echo "$all_projects" | grep "^$1"  | grep -o ':\ .*\[' | sed 's#^:\ *\(.*\)\[$#\1#' | sed 's/*//;s/ *$//'
+}
+
+function get_project_from_id {
+  echo "$all_projects" | grep "\[$1\]" | grep -o ':\ .*\[' | sed 's#^:\ *\(.*\)\[$#\1#' | sed 's/*//;s/ *$//'
+}
+
+function has_illegal_characters {
+  echo "$1" | grep -q '\(;\|\[\|\]\)\+'
+}
+
+
+function create_project {
+  echo "Creating a new project"
+  echo "What would you like to call it?"
+  read -r project_name
+  if has_illegal_characters "$project_name"; then
+    echo "You can't have brackets([]) in the project name"
+    exit 1
+  fi
+
+  echo "What is an ID that you would call it?"
+  echo "(This is used to specify which project you would like to submit time to)"
+  read -r project_id
+
+  echo "What is the target hours per week?"
+  read -r target_hours
+  temp_target_hours=$(test_is_number "$target_hours")
+  if [ $? -ne 0 ]; then
+    logger_debug "'$target_hours' did not contain a [0-9]* pattern"
+    echo "'$target_hours' is not a valid number." ; exit 1
+  fi
+  target_hours=$target_hours
+
+  echo "What does the project pay(per hour)? Enter s to skip"
+  read -r money_per_hour
+  temp_money_per_hour=$(test_is_number "$money_per_hour")
+  code=$?
+  if [ $code -ne 0 ] && [ "$money_per_hour" != "s" ]; then
+    logger_debug "'$money_per_hour' did not contain a [0-9]* pattern"
+    echo "'$money_per_hour' is not a valid number." ; exit 1
+  elif [ "$money_per_hour" == "s" ]; then
+    logger_debug "Skip money per hour"
+    money_per_hour="s"
+  else
+    logger_debug "money per hour: '$money_per_hour'"
+    money_per_hour=$money_per_hour
+  fi
+
+  if [ "$money_per_hour" != "s" ]; then
+    echo "What is the currency paid?"
+    read -r currency
+  fi
+
+  if [ ! -f "$log_path/def/$project_name" ]; then
+    logger_debug "Initalizing project '${project_name}'"
+    touch "$log_path/def/${project_name}"
+    touch "$log_path/${project_name}.logs"
+    echo "project_name=$project_name" > "$log_path/def/$project_name"
+    echo "project_id=$project_id" >> "$log_path/def/$project_name"
+    echo "target_hours=$target_hours" >> "$log_path/def/$project_name"
+    if [ "$money_per_hour" != "s" ]; then
+      echo "money_per_hour=$money_per_hour" >> "$log_path/def/$project_name"
+      echo "currency=$currency" >> "$log_path/def/$project_name"
+    fi
+  else
+    echo "Could not create project, it already exists!"
+    logger_debug "Could not create $project_name since $log_path/def/$project_name does exists"
+  fi
+}
+
+function init_program {
+  logger_debug "Initalizing the program. Creating folder and config."
+  if [ ! -d "$log_path" ]; then
+    mkdir -p "$log_path"; logger_debug "Created '$log_path'";
+  fi
+  if [ ! -d "$log_path/def" ]; then
+    mkdir "$log_path/def/"; logger_debug "Created '$log_path/def'";
+  fi
+  if [ ! -d "$log_path/saved_log_times" ]; then
+    touch "$log_path/saved_log_times"; logger_debug "Created '$log_path/saved_log_times'";
+  fi
+  if [ ! -f "$log_path/config" ]; then
+    touch "$log_path/config"
+    echo "default_project=" > "$log_path/config"
+  fi
+}
+
+function get_default_project {
+  cat "$log_path/config" | grep -o 'default_project\ *\=\ *.*' | cut -d '=' -f 2- | awk '{$1=$1};1'
+}
+
+function get_project {
+  default=$(get_default_project)
+  # $1 = project, if $1 = empty then $default. If $1 != default then default. else $1
+  if [ -z "$1" ]; then echo $default;
+  elif [ "$1" != "$default" ]; then echo $1;
+  else echo $default ; fi;
+}
+
+function is_program_inited {
+  if [ -f "$log_path/config" ] && [ -d "$log_path/def/" ] && [ -f "$log_path/saved_log_times" ]; then
+    exit 0
+  else exit 1
+  fi
+}
+
+function write_to_disk {
+  # $1 = project_name
+  # $2 = decimal time
+  # $3 = military time
+  # $4 = Start time
+  # $5 = End time
+  # $6 = Break minutes
+  # $7 = Date
+  # $8 = Note [optional]
+  project=$1
+  dec_time=$2
+  mil_time=$3
+  start_time=$(echo "$4" | sed 's#\ ##')
+  end_time=$(echo "$5" | sed 's#\ ##')
+  break_min=$6
+  log_date_input=$7
+  note_text=${8:-}
+
+  log_date=$(date +%Y-%m-%d -d "$log_date_input")
+  week_date=$(date +%G-%V-%u -d "$log_date_input")
+  proj_log_path=$(get_log_path_for_project $project)
+  entry="$week_date/$log_date [$dec_time]{$mil_time} ($start_time $end_time $break_min) [$note_text]"
+  echo "$entry" >> $proj_log_path
+  logger_debug "Writing log entry $entry to $proj_log_path"
+}
+
+function get_log_path_for_project {
+  echo "$log_path/$1.logs"
+}
+
+function time_to_decimal_time {
+  # t1 = $1
+  # t1h = the hour in 24h-format
+  # t1m = the hour in 24h-format
+
+  # t2 = $2
+  # t2h = the hour in 24h-format
+  # t2m = the hour in 24h-format
+
+  # t3 = $3
+  # t1h = the hour in 24h-format
+  t1h=$1
+  t1m=$2
+  t2h=$3
+  t2m=$4
+  t3m=$5
+
+  if  [ "$t1h" -ge 0 ] &&
+      [ "$t1h" -le 23 ] &&
+      [ "$t2h" -ge 0 ] &&
+      [ "$t2h" -le 23 ]
+  then
+    # Remove leading zeros
+    t1h=${t1h#0}
+    t1m=${t1m#0}
+    t2h=${t2h#0}
+    t2m=${t2m#0}
+
+    # Minimize stuff
+
+    # We want to subtract hours here.
+    # 0830 & 1600 => 0000 & 0830
+    # 0725 & 1210 => 0000 & 0445
+
+    if [ "$t1m" -gt "$t2m" ]  # 0830, 1600.
+    then
+        # t2's minute is lesser. Add 60 to it and subtract t2h by one.
+        # 0725 & 1210 => 0725 & 1170 => ((11-07) => 04, (70-25) => 45)
+        t2h=$((t2h-=1))
+        t2m=$((t2m+60))
+    fi # t1m -gt t2m
+
+    # Should be good to go, do the subtraction
+    t2h=$((t2h-t1h))
+    t2m=$((t2m-t1m))
+
+    # t1h, t1m not relevant any more.
+    unset t1h ; unset t1m
+
+    # Fix third argument
+    if [ ! -z "$t3m" ] && [ "$t3m" -gt 0 ] # is not empty or negative
+    then
+        # Wrap it up with an if-statement checking if t3m/60 is larger than t2h. If so, break is larger than end time.
+        tbh=$((t3m/60))
+        total_min=$((t2h*60+(t2m)))
+
+        if [ "$t3m" -lt "$total_min" ] # is it even a valid procedure?
+        then
+            if [ "$t2m" -gt "$t3m" ] # if there is room to just subtract. (h1=0445; h2=45;h2-h1)=>0400
+            then
+                t2m=$((t2m-t3m))
+            else
+                # Since t2m is lower than t3m, borrow hours from t2h and then subtract
+                temp=$(echo "$t3m")
+                while [ "$t3m" -gt "$t2m" ]
+                do
+                    t2h=$((t2h-=1))
+                    t2m=$((t2m+60))
+                done
+                t2m=$((t2m-temp))
+            fi # t3m -lt total_min
+        fi # t3m -lt total_min
+    fi # ! -z t3m && t3m -gt 0
+
+    # 10# because it might contain leading 0's
+    # total_minutes = ((4*60) => 240, (45) => 45) => 295
+    # total_minutes=$((10#$t2h*60 + 10#$t2m))
+
+    dectime=$(awk "BEGIN {print ($t2h+($t2m/60))}")
+    # append 0 so 4:9 => 04:09.
+    if [ ${#t2h} -eq 1 ]; then t2h="0$t2h"; fi
+    if [ ${#t2m} -eq 1 ]; then t2m="0$t2m"; fi
+    echo "$dectime/$t2h:$t2m"
+    exit 0
+  fi
+  logger_debug "Could not compute: $t1h $t1m $t2h $t2m $t3m"
+  exit 1
+}
+
+function calculate_time_with_parameters {
+  # start_time = $1(hh mm)
+  # stop_time = $2(hh mm)
+  # break_minutes = $3(mm)
+  # project = $4(string)
+  # date    = $5(string) (optional)
+  # note    = $6(string) (optional)
+
+  t1h=$(echo "${1:0:2}")
+  t1m=$(echo "${1:3:5}")
+  t2h=$(echo "${2:0:2}")
+  t2m=$(echo "${2:3:5}")
+  t3m=$3
+  project=$4
+  log_date="$5"
+  note=$6
+
+  logger_debug "Date: '$log_date'"
+  if [[ ! -z "${log_date:+foo}" ]]; then
+    logger_debug "Log date is set to something"
+    if [ $log_date == "prompt" ]; then
+      logger_debug "Log date needs to be prompted"
+      echo "Please enter a date with the format YYY-mm-dd. For example, 2017-01-02 for 2nd Jan 2017"
+      read -r log_date
+    fi
+
+    year_month_day_format=$(date -d "$log_date" 1>/dev/null 2>&1)
+    code=$?
+    if [ $code -ne 0 ]; then
+      logger_debug "Log date supplied was faulty. Did not follow a format that \`date\` understand"
+      echo "Unknown date '$log_date'"
+      exit 1
+    fi
+  else
+    logger_debug "Log date was not supplied at all. Set to now."
+    log_date=$(date +%Y-%m-%d)
+  fi
+
+  if [[ ! -z "${note:+foo}" ]]; then
+    echo "Please enter your note. Finish with enter."
+    read -r note_text
+  fi
+  note_text=${note_text:=}
+
+
+  logger_debug "Time to decimal time inputs: '$t1h' '$t1m' '$t2h' '$t2m' '$t3m'"
+  both_times=$(time_to_decimal_time $t1h $t1m $t2h $t2m $t3m)
+  dec_time=$(echo $both_times | grep -o '^[0-9]\+\.*[0-9]*')
+  mil_time=$(echo $both_times | grep -o '\/[0-9]\+:[0-9]*' | sed 's#\/##')
+  echo "Times: $t1h:$t1m, $t2h:$t2m, $t3m. Decimal time: $dec_time Military time: $mil_time"
+  echo "For date $log_date"
+
+  echo "Save this to $proj_name project log? y/n"
+  read confirm
+  logger_debug "Confirm: '$confirm'"
+  [ "$confirm" = "y" ] && write_to_disk $project $dec_time $mil_time "$1" "$2" "$3" "$log_date" "$note_text"
+}
+
+# If empty arguments, call usage
+if [ $# -eq 0 ]; then usage 0; fi
+
+specify_project="n"
+
+# Get all projects for the program
+get_all_projects
+
+# main
+while [[ $# -ge 1 ]]; do
+  logger_debug "Processing '$1'"
+  case "$1" in
+    create)
+      case "$2" in
+        project)
+          logger_debug "About to describe project project"
+          new_project="y"
+          specify_project="n"
+          shift ; shift
+        ;;
+        *)
+          echo "Could not comprehend '$2' with create keyword"
+          shift
+        ;;
+      esac
+    ;;
+    show)
+      case "$2" in
+        logs)
+          show_logs="y"
+          specify_project="y"
+          proj_name=$(get_project_from_id $3)
+          action="show logs for?"
+          if [ ! -z "$proj_name" ]; then
+            logger_debug "ID from argument matched: '$3'"
+            specify_project="n"
+            shift
+          fi
+
+          k=$(echo "$3" | grep -o '[0-9]*')
+          if [[ "$k" == "$3" && $k -ge 0 && $k -le 52 ]]; then
+            logger_debug "Week from argument matched: '$3'"
+            show_logs_week=$3
+            shift
+          fi
+
+          elem=$(echo $3 | grep -o '[0-9]*')
+          if [[ ! -z "$3" && $elem == $3 ]]; then
+            logger_debug "Year from argument matched: '$3'"
+            year=$elem
+            shift
+          fi
+
+          shift ; shift
+        ;;
+        *)
+          echo "Could not comprehend '$2' with show keyword"
+          shift
+        ;;
+      esac
+    ;;
+    delete)
+      case "$2" in
+        project)
+          delete_project="y"
+          specify_project="n"
+          shift ; shift
+        ;;
+        *)
+          echo "Could not comprehend '$2' with delete keyword"
+          shift
+        ;;
+      esac
+    ;;
+    --help)
+      usage 0
+    ;;
+    --note)
+      note="y"
+      logger_debug "--note matched, will prompt later for textual input"
+      shift
+    ;;
+    --dev)
+      logger_debug "Setting '$2' to \$log_path"
+      [ ! -d "$2" ] && { echo "'$2' must be a directory!"; exit 1; }
+      log_path="$2"
+      get_all_projects
+      project_ids_only=$(echo "$all_projects" | grep -o '\[.*\]')
+      logger_debug "'$2' contains the project ids: '$project_ids_only'"
+      shift ; shift
+    ;;
+    --raw)
+      raw_logs="y"
+      shift
+    ;;
+    --purge)
+      purge="y"
+      shift
+    ;;
+    log)
+      logger_debug "Log time matched"
+      log_time="y"
+      specify_project="y"
+      id_matched="n"
+      action="log time for"
+      proj_name=$(get_project_from_id $2)
+      if [ ! -z "$proj_name" ] ; then
+        logger_debug "Matched project id from argument: '$2'"
+        specify_project="n"
+        shift
+      else
+        logger_debug "'$2' was not a project"
+      fi
+
+      if (test_timestamp "$(parse_timestamp "$2")"); then
+        maybeStart=$2
+        logger_debug "$2 is start timestamp, shifting: '$2'"; shift ;
+      fi
+
+      if (test_timestamp "$(parse_timestamp "$2")"); then
+        maybeEnd=$2
+        logger_debug "$2 is end timestamp, shifting: '$2'"; shift ;
+      fi
+
+      if (test_is_number "$2"); then
+        maybeBreak=$2
+        logger_debug "$2 is break time, shifting: '$2'."; shift ;
+      fi
+
+      shift
+    ;;
+    --date)
+      (date -d "$2" 1>/dev/null 2>&1)
+      code=$?
+      if [ ! -z "$2" ] && [ $code -eq 0 ]; then
+        logger_debug "Log date set through arguments '$2'"
+        log_date=$2
+        shift
+      else
+        logger_debug "Log date not supplied with --date. Will prompt later."
+        log_date="prompt"
+      fi
+      shift
+    ;;
+    -v)
+      logger_debug "Debug is toggled"
+      log_level=1
+      shift
+    ;;
+    list)
+      case "$2" in
+        projects)
+          list_projects="y"
+          specify_project="n"
+          shift
+        ;;
+        project_id)
+          list_projects | grep -o '\[[^]]*\]' | sed 's#^\[##g; s#\]$##g' | tr '\n' ' '
+          shift
+        ;;
+        *)
+          echo "Could not comprehend '$2' with list keyword"
+          shift
+        ;;
+      esac
+      shift
+    ;;
+    start)
+      logger_debug "Start matched"
+      log_start_time="y"
+      specify_project="y"
+      proj_name=$(get_project_from_id "$2")
+      action="log start time for"
+      if [ ! -z "$proj_name" ]; then
+        logger_debug "Project id specified from arguments"
+        specify_project="n"
+        id_matched="y"
+        shift
+      fi
+      shift
+    ;;
+    edit)
+      case "$2" in
+        logs)
+          specify_project="y"
+          edit_logs="y"
+          proj_name=$(get_project_from_id "$3")
+          action="edit logs for"
+          if [ ! -z "$proj_name" ]; then
+            specify_project="n"
+            id_matched="y"
+            shift
+          fi
+          shift
+        ;;
+        *)
+          echo "Could not comprehend '$2' with edit keyword"
+          shift
+        ;;
+      esac
+      shift
+    ;;
+    --version)
+      echo "$(basename 0) $version"
+    ;;
+    --examples)
+      examples
+    ;;
+    *)
+      logger_debug "About to call usage '$1'"
+      echo "Unknown argument '$1'"
+      usage 1
+      shift
+    ;;
+  esac
+done
+
+#############################################################
+# Purge timelog
+#############################################################
+# if un-inited, init
+# If want to purge, don't init
+if [ -z "$purge" ]; then
+  k=$(is_program_inited)
+  if [ $? -eq 1 ]; then
+    logger_debug "Program uninted. Initing program"
+    init_program
+  else
+    logger_debug "No need to init program"
+  fi
+  get_all_projects
+else
+  logger_debug "Uninstall toggled"
+  logger_debug "User should match '$PURGE_PHRASE' to delete all configuration/logs"
+  echo "Are you sure that you want to purge timelog? There is no undo in doing this."
+  echo "Type out: '$PURGE_PHRASE' to delete all configuration and logs that you have created."
+  read -r phrase
+  if [[ "$phrase" == "$PURGE_PHRASE" ]]; then
+    logger_debug "'$PURGE_PHRASE' matched. About to remove all configuration."
+    echo "Removing '$log_path'"
+    rm -r "$log_path"
+    [ $? -ne 0 ] && { logger_debug "Exiting with 1 "; exit 1; } || { logger_debug "Exiting with 0"; exit 0; }
+  fi
+fi
+
+# If the program requires a project
+if [ "$specify_project" != "n" ]; then
+  # select max number from left most number in list projects
+  proj_amount=$(echo "$all_projects" | grep -o '^[0-9]' | wc -l)
+  if [ $proj_amount -ge 1 ]; then
+    if [ $proj_amount -eq 1 ]; then
+      logger_debug "Only one project created, getting it"
+      proj_name=$(get_project_from_id ".*")
+      logger_debug "Got '$proj_name'"
+    else
+      logger_debug "Project input: '$proj_name'"
+      old_proj_name=$proj_name
+      logger_debug "Is ID matched? '$id_matched'"
+
+      if [ "$id_matched" = "y" ]; then
+        proj_name=$(get_project_from_id $proj_name) ;
+        logger_debug "Specifying a project with id_name '$proj_name'" ;
+      else
+        echo "Here are the projects you have created:"
+        echo "$all_projects"
+        echo "What project are you trying to $action?"
+        read prompt_new_proj_name
+        proj_name=$prompt_new_proj_name
+        proj_name=$(get_project_from_all_projects $prompt_new_proj_name)
+      fi
+      [ -z "$proj_name" ] && { echo "'$old_proj_name' is not a valid project"; usage 1; }
+
+      logger_debug "Project is set as '$proj_name'"
+    fi
+  else
+    echo "This action requires you to specify a project but there is no created projects. Create a project with 'create project' keywords"
+    exit 0
+  fi
+fi
+
+#############################################################
+# List projects
+#############################################################
+if [ ! -z $new_project ]; then
+  create_project
+fi
+
+#############################################################
+# List projects
+#############################################################
+if [ ! -z "$list_projects" ]; then
+  if [ ! -z "$all_projects" ]; then
+    echo "The projects are:"
+    echo "$all_projects"
+  else
+    echo "No projects! Create one with 'create project' keywords"
+  fi
+  exit 0
+fi
+#############################################################
+# Log start time
+#############################################################
+if [ ! -z "$log_start_time" ]; then
+  logger_debug "About to store date from now to disk"
+  now=$(date +%Y-%m-%d\ %H:%M)
+  save_time_to_disk "start" "$now"
+fi
+
+
+#############################################################
+# Delete project
+#############################################################
+if [ ! -z "$delete_project" ]; then
+  delete_project
+  exit 0
+#############################################################
+# Show logs
+#############################################################
+elif [ ! -z "$show_logs" ]; then
+  if [ ! -z "$all_projects" ]; then
+    if [ -z "$raw_logs" ]; then
+      if [ -z "$show_logs_week" ]; then
+        echo "For what week? Current week is $(date +%V)"
+        read week
+        show_logs_week=$week
+      fi
+      logger_debug "project: $proj_name"
+
+      if [ ! -z "$proj_name" ]; then
+        get_project_meta_info $proj_name
+        logger_debug "Showing logs for $proj_name given week $show_logs_week"
+        if [ -z "$year" ]; then year=$(date +%Y); fi
+        week_stats "$(cat "$log_path/$proj_name.logs")" "$show_logs_week" "$year"
+      fi
+    else
+      logger_debug "About to start less with $log_path/${proj_name}.logs as argument"
+      less "$log_path/${proj_name}.logs"
+    fi
+  else
+    echo "Can't show logs if no projects exists"
+  fi
+#############################################################
+# Log time
+#############################################################
+elif [ ! -z "$log_time" ]; then
+  logger_debug "About to log time"
+  if [ ! -z "$proj_name" ]; then
+    # See if we need to prompt the user for timestamps
+    format="8, 800, 8.00, 8:00, 0800, 08.00, 08:00"
+
+    # Read potential start time
+    read_start_time=$(read_start_time_for_disk "start")
+    if [ $? -ne 0 ]; then
+      logger_debug "read_start_time_for_disk did get anything '$read_start_time'"
+      read_start_time=
+    fi
+
+    # Start time
+    if [[ ! -z "${maybeStart:+foo}" ]]; then
+      logger_debug "'$maybeStart' was a timestamp"
+      parsed_start_timestamp=$(parse_timestamp "$maybeStart")
+    elif [ ! -z "${read_start_time:+foo}" ]; then
+      echo "Using start time $read_start_time that is saved from earlier."
+      logger_debug "Using '$read_start_time' as start time"
+      parsed_start_timestamp=$(parse_timestamp "$read_start_time")
+    else
+      echo "What start hour:minute? (e.g. 8, 8.05, 8:10, 08:25, 0835)"
+      read start_timestamp
+      parsed_start_timestamp="$(parse_timestamp "$start_timestamp")"
+      (test_timestamp "$parsed_start_timestamp")
+      if [ $? -ne 0 ]; then
+        logger_debug "Entered '$start_timestamp' as a start time"
+        echo "'$start_timestamp' does not follow the format '$format'"
+        exit 1
+      fi
+    fi
+
+    if [[ ! -z "${maybeEnd:+foo}" ]]; then
+      logger_debug "'$maybeEnd' was a timestamp"
+      end_timestamp=$maybeEnd
+      parsed_end_timestamp=$(parse_timestamp "$end_timestamp")
+    else
+      echo "What end hour:minute? (e.g. 8, 8.05, 8:10, 08:25, 0835) Empty for now"
+      read end_timestamp
+      parsed_end_timestamp=$(parse_timestamp "$end_timestamp")
+      (test_timestamp "$parsed_start_timestamp")
+      code=$?
+      if [ -z "$end_timestamp" ]; then
+        parsed_end_timestamp=$(parse_timestamp "$(date +%H%M)")
+      elif [ $code -ne 0 ]; then
+        logger_debug "Entered '$end_timestamp' as a end time"
+        echo "'$end_timestamp' does not follow the format '$format'"
+        exit 1
+      fi
+    fi
+
+    if [[ ! -z "${maybeBreak:+foo}" ]]; then
+      logger_debug "'$maybeBreak' was a valid number"
+      break_time=$maybeBreak
+    else
+      echo "How large of a break(in minutes)?"
+      read break_time
+      (test_is_number "$break_time")
+      if [ $? -ne 0 ]; then
+        echo "'$break_time' is not a number!"; exit 1;
+      fi
+    fi
+
+    if [[ -z "${note:+foo}" ]]; then
+      note=""
+    fi
+
+    logger_debug "Assumed inputs: Start:$maybeStart End:$maybeEnd Break:$maybeBreak"
+    logger_debug "Parsed: Start:$parsed_start_timestamp End:$parsed_end_timestamp Break:$break_time"
+    calculate_time_with_parameters "$parsed_start_timestamp" "$parsed_end_timestamp" "$break_time" "$proj_name" "$log_date" "$note"
+  else
+    logger_debug "Could not log time since the project name send to this section was unset."
+  fi
+#############################################################
+# Edit logs
+#############################################################
+elif [ ! -z "$edit_logs" ]; then
+  if [ ! -z "$(which xdg-open >/dev/null 2>&1)" ]; then
+    logger_debug "Opening with xdg-open"
+    xdg-open "$log_path/${proj_name}.logs";
+  elif [ ! -z "$EDITOR" ]; then
+    logger_debug "Opening with \$EDITOR"
+    "${EDITOR}" "$log_path/${proj_name}.logs"
+  else
+    logger_debug "Opening with vim, default"
+    vim "$log_path/${proj_name}.logs"
+  fi
+fi
+
+exit 0

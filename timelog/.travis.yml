@@ -1,0 +1,28 @@
+language: bash
+
+sudo: true
+
+services:
+  - docker
+
+before_script:
+  - chmod +x test/unittest.sh
+  - chmod +x bin/timelog
+  - chmod +x test/test_dep.sh
+  - export PATH=$PATH:$PWD/bin/
+  - pushd test/
+  - ./test_dep.sh
+  - popd
+
+script:
+  - export PATH=$PATH:$PWD/bin/
+  - pushd test/
+  - ./unittest.sh
+  - popd
+  - docker build -t kcov_img .
+  - docker run --name kcov_container kcov_img ls
+  - mkdir cov/
+  - docker cp kcov_container:/tmp/cov cov/
+  - cd cov
+  - bash <(curl -s https://codecov.io/bash)
+

@@ -38,6 +38,10 @@
 	amend = commit --amend --reuse-message=HEAD --date=now
 	# Remove branches that have already been merged with master. ‘delete merged’
 	dm = "!git branch --merged | grep -v '\\*' | xargs -n 1 git branch -d"
+	# the acronym stands for "subtree add". Usage: git sba <repo url> <dest folder>
+	sba = "!f() { git subtree add --prefix $2 $1 master --squash; }; f"
+	# the acronym stands for "subtree update". Usage: git sbu <repo url> <dest folder>
+	sbu = "!f() { git subtree pull --prefix $2 $1 master --squash; }; f" 
 
 [apply]
 	# Detect whitespace errors when applying a patch
