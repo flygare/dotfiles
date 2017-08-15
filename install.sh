@@ -36,11 +36,15 @@ function macos {
 function pkg-install {  
 if [[ "$OSTYPE" == "linux-gnu" ]]; then
   # Linux install
-  sudo apt-get install $1 &> /dev/null
+  if [ ! $(which $1 2>/dev/null) ]; then
+    sudo apt-get install $1 &> /dev/null
+  fi
   print_result $? "$1"
 elif [[ "$OSTYPE" == "darwin"* ]]; then
   # Mac OSX install
-  brew install $1 &> /dev/null
+  if [ ! $(which $1 2>/dev/null) ]; then
+    brew install $1 &> /dev/null
+  fi
   print_result $? "$1"
 else
   print_error "Your operating system is not supported"
