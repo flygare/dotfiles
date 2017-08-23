@@ -15,12 +15,14 @@ function install-generic {
   print_header "Installs"
   pkg-install curl
   pkg-install zsh
-  install-ohmyzsh &> /dev/null
+  install-ohmyzsh
   symlink
 }
 
 function linux {
   print_header "Linux detected, starting installation"
+  sudo apt-get update &> /dev/null
+  print_result $? "Updated package lists"
   install-generic
   print_header_result $? "Installation complete"
 }
@@ -68,7 +70,7 @@ function install-brew {
 }
 
 function install-ohmyzsh {
-  sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)"
+  sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)" &> /dev/null
   print_result $? "Oh-my-zsh"
 }
 
