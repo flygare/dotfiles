@@ -11,3 +11,5 @@ Install dotfiles on cloned repository
 ```
 ./install.sh
 ```
+
+Every file in the *bin* directory will be added to zsh path
