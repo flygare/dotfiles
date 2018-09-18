@@ -3,3 +3,6 @@
 
 # Ignore .local
 *.local
+
+# Mac
+.DS_Store
