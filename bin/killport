@@ -1,0 +1,1 @@
+kill -QUIT $(lsof -sTCP:LISTEN -i tcp:$1 -t)
