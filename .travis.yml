@@ -10,4 +10,5 @@ notifications:
     on_failure: never
     on_success: never
 
-script: bash test.sh
+script: sudo -v bash test.sh
+sudo: required
