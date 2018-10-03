@@ -3,7 +3,6 @@ language: bash
 matrix:
   include:
     - os: linux
-    - os: osx
 
 notifications:
   email:
@@ -11,4 +10,3 @@ notifications:
     on_success: never
 
 script: bash test.sh
-sudo: required
