@@ -11,4 +11,3 @@ notifications:
     on_success: never
 
 script: bash test.sh
-sudo: required
