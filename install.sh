@@ -32,6 +32,7 @@ function macos {
   install-brew
   install-generic
   pkg-install autojump
+  pkg-install jenv
   print_header_result $? "Installation complete"
 }
 

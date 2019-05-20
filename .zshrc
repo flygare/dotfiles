@@ -86,5 +86,7 @@ setopt correct
 # Example aliases
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
-export PATH="/usr/local/opt/openssl/bin:$PATH"
-export PATH="/usr/local/opt/node@6/bin:$PATH"
+#export PATH="/usr/local/opt/node@6/bin:$PATH"
+#export JAVA_HOME=$(/usr/libexec/java_home -v1.8)
+export PATH="$HOME/.jenv/bin:$PATH"
+eval "$(jenv init -)"
